@@ -3,8 +3,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from database import get_db
-from models import Product, User
-from schemas import ProductCreate, ProductSchema, UserCreate, UserLogin
+from models import User
+
+from schemas import (
+    ProductCreate,
+    ProductSchema,
+    ProductUpdate,
+    UserCreate,
+    UserLogin
+)
+
 from security import (
     hash_password,
     verify_password,
@@ -13,7 +21,34 @@ from security import (
     require_admin
 )
 
+from services.product_service import (
+    create_product_service,
+    get_products_service,
+    get_product_service,
+    update_product_service,
+    delete_product_service
+)
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO
+)
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
+
+@app.exception_handler(SQLAlchemyError)
+async def database_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Database hatası oluştu"
+        }
+    )
 
 
 @app.get("/")
@@ -21,28 +56,49 @@ def home():
     return {"message": "Stock API çalışıyor!"}
 
 
-# -------------------------
+# =========================================================
 # PRODUCTS
-# -------------------------
+# =========================================================
 
-@app.get("/products", response_model=list[ProductSchema])
-def get_products(
-    db: Session = Depends(get_db)
+@app.post(
+    "/products",
+    response_model=ProductSchema,
+    status_code=201
+)
+def create_product(
+    product: ProductCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    products = db.scalars(
-        select(Product)
-    ).all()
+    return create_product_service(
+        db,
+        product,
+        current_user.id
+    )
 
-    return products
+
+@app.get(
+    "/products",
+    response_model=list[ProductSchema]
+)
+def get_products_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return get_products_service(db)
 
 
-@app.get("/products/{product_id}", response_model=ProductSchema)
-def get_product(
+@app.get(
+    "/products/{product_id}",
+    response_model=ProductSchema
+)
+def get_product_endpoint(
     product_id: int,
     db: Session = Depends(get_db)
 ):
-    product = db.scalar(
-        select(Product).where(Product.id == product_id)
+    product = get_product_service(
+        db,
+        product_id
     )
 
     if product is None:
@@ -54,82 +110,57 @@ def get_product(
     return product
 
 
-@app.post("/products", response_model=ProductSchema)
-def create_product(
-    product: ProductCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    new_product = Product(
-        name=product.name,
-        price=product.price,
-        description=product.description,
-        stock=product.stock,
-        category=product.category
-    )
-
-    db.add(new_product)
-    db.commit()
-    db.refresh(new_product)
-
-    return new_product
-
-
-@app.put("/products/{product_id}", response_model=ProductSchema)
-def update_product(
+@app.put(
+    "/products/{product_id}",
+    response_model=ProductSchema
+)
+def update_product_endpoint(
     product_id: int,
-    product: ProductCreate,
+    product: ProductUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    existing_product = db.scalar(
-        select(Product).where(Product.id == product_id)
+    updated_product = update_product_service(
+        db,
+        product_id,
+        product
     )
 
-    if existing_product is None:
+    if updated_product is None:
         raise HTTPException(
             status_code=404,
             detail="Ürün bulunamadı"
         )
 
-    existing_product.name = product.name
-    existing_product.price = product.price
-    existing_product.description = product.description
-    existing_product.stock = product.stock
-    existing_product.category = product.category
-
-    db.commit()
-    db.refresh(existing_product)
-
-    return existing_product
+    return updated_product
 
 
-@app.delete("/products/{product_id}")
-@app.delete("/products/{product_id}")
-def delete_product(
+@app.delete(
+    "/products/{product_id}",
+    status_code=204
+)
+def delete_product_endpoint(
     product_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    product = db.scalar(
-        select(Product).where(Product.id == product_id)
+    deleted = delete_product_service(
+        db,
+        product_id
     )
 
-    if product is None:
+    if not deleted:
         raise HTTPException(
             status_code=404,
             detail="Ürün bulunamadı"
         )
 
-    db.delete(product)
-    db.commit()
-
-    return {"message": "Ürün başarıyla silindi"}
+    return
 
 
-# -------------------------
-# AUTHENTICATION
-# -------------------------
+# =========================================================
+# AUTH
+# =========================================================
 
 @app.post("/auth/register")
 def register(
@@ -192,6 +223,11 @@ def login(
     access_token = create_access_token({
         "sub": str(existing_user.id)
     })
+
+    logger.info(
+        "Kullanıcı giriş yaptı: %s",
+        existing_user.email
+    )
 
     return {
         "access_token": access_token,
