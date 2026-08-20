@@ -6,7 +6,8 @@ class ProductCreate(BaseModel):
     price: float
     description: str
     stock: int
-    category = str
+    category: str
+
 
 class ProductSchema(BaseModel):
     id: int
@@ -14,6 +15,16 @@ class ProductSchema(BaseModel):
     price: float
     description: str
     stock: int
-    category = str
+    category: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
