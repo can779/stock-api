@@ -30,7 +30,7 @@ from services.product_service import (
 )
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
-
+from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 logging.basicConfig(
@@ -40,6 +40,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.exception_handler(SQLAlchemyError)
 async def database_exception_handler(request, exc):
@@ -82,10 +89,22 @@ def create_product(
     response_model=list[ProductSchema]
 )
 def get_products_endpoint(
+    page: int = 1,
+    limit: int = 10,
+    category: str | None = None,
+    search: str | None = None,
+    sort: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_products_service(db)
+    return get_products_service(
+        db,
+        page,
+        limit,
+        category,
+        search,
+        sort
+    )
 
 
 @app.get(

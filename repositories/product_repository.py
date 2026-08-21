@@ -5,11 +5,43 @@ from models import Product
 from sqlalchemy.exc import SQLAlchemyError
 
 
-def get_products(db: Session):
-    return db.scalars(
-        select(Product)
-    ).all()
+def get_products(
+    db: Session,
+    page: int,
+    limit: int,
+    category: str | None = None,
+    search: str | None = None,
+    sort: str | None = None
 
+):
+    offset = (page - 1) * limit
+
+    query = select(Product)
+
+    if category:
+        query = query.where(
+            Product.category == category
+        )
+
+
+    if search:
+        query = query.where(
+            Product.name.ilike(f"%{search}%")
+        )
+
+    if sort == "price_asc":
+        query = query.order_by(
+            Product.price.asc()
+        )
+
+    elif sort == "price_desc":
+        query = query.order_by(
+            Product.price.desc()
+        )
+
+    query = query.offset(offset).limit(limit)
+
+    return db.scalars(query).all()
 
 def get_product_by_id(
     db: Session,

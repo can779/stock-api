@@ -1,7 +1,7 @@
 from passlib.context import CryptContext
 
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -12,10 +12,14 @@ from models import User
 
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends, HTTPException
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 security = HTTPBearer()
 
-SECRET_KEY = "super-secret-key"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(
@@ -34,7 +38,7 @@ def verify_password(plain_password: str, hashed_password: str):
 def create_access_token(data: dict):
     to_encode = data.copy()
 
-    expire = datetime.utcnow() + timedelta(minutes=30)
+    expire = datetime.now(UTC) + timedelta(minutes=30)
 
     to_encode.update({
         "exp": expire

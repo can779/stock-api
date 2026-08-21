@@ -39,9 +39,21 @@ def create_product_service(
     return result
 
 def get_products_service(
-    db: Session
+    db: Session,
+    page: int,
+    limit: int,
+    category: str | None = None,
+    search: str | None = None,
+    sort: str | None = None
 ):
-    return get_products(db)
+    return get_products(
+        db,
+        page,
+        limit,
+        category,
+        search,
+        sort
+    )
 
 
 def get_product_service(
