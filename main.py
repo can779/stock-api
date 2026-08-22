@@ -10,7 +10,9 @@ from schemas import (
     ProductSchema,
     ProductUpdate,
     UserCreate,
-    UserLogin
+    UserLogin,
+    AIRequest,
+    AIResponse
 )
 
 from security import (
@@ -32,6 +34,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+
+from ai.ai_service import chat_with_ai
+from ai.llm_service import ask_llm
+
 
 logging.basicConfig(
     level=logging.INFO
@@ -251,4 +257,22 @@ def login(
     return {
         "access_token": access_token,
         "token_type": "bearer"
+    }
+
+@app.post(
+    "/ai/chat",
+    response_model=AIResponse
+)
+def ai_chat(
+    request: AIRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    response = chat_with_ai(
+        db,
+        request.message
+    )
+
+    return {
+        "response": response
     }

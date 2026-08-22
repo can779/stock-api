@@ -42,3 +42,10 @@ class UserResponse(BaseModel):
     username: str
 
     model_config = ConfigDict(from_attributes=True)
+
+class AIRequest(BaseModel):
+    message: str
+
+
+class AIResponse(BaseModel):
+    response: str

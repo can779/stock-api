@@ -168,3 +168,33 @@ def test_products_combined_filters():
     prices = [product["price"] for product in data]
 
     assert prices == sorted(prices)
+
+def test_ai_chat_authenticated():
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "can@example.com",
+            "password": "123456"
+        }
+    )
+
+    assert login_response.status_code == 200
+
+    token = login_response.json()["access_token"]
+
+    response = client.post(
+        "/ai/chat",
+        headers={
+            "Authorization": f"Bearer {token}"
+        },
+        json={
+            "message": "iPhone 15'in stok durumu nedir?"
+        }
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "response" in data
+    assert len(data["response"]) > 0

@@ -50,7 +50,15 @@ def get_product_by_id(
     return db.scalar(
         select(Product).where(Product.id == product_id)
     )
-
+def get_product_by_name(
+    db: Session,
+    product_name: str
+):
+    return db.scalar(
+        select(Product).where(
+            Product.name.ilike(product_name)
+        )
+    )
 
 def create_product(
     db: Session,
