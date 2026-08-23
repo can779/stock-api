@@ -8,11 +8,33 @@ from ai.tools import (
     get_product_stock_tool
 )
 
+from ai.rag.rag_service import answer_with_rag
+
 
 def chat_with_ai(
     db: Session,
     user_message: str
 ):
+    # RAG ile cevaplanabilecek sorular
+    rag_keywords = [
+        "minimum stok",
+        "stok politikası",
+        "yeniden sipariş",
+        "stok seviyesi",
+        "politika",
+        "prosedür"
+    ]
+
+    # Soru RAG ile ilgiliyse RAG kullan
+    if any(
+        keyword in user_message.lower()
+        for keyword in rag_keywords
+    ):
+        return answer_with_rag(
+            user_message
+        )
+
+    # RAG değilse mevcut tool calling sistemini kullan
     messages = [
         {
             "role": "user",
@@ -44,7 +66,9 @@ def chat_with_ai(
             json.dumps(arguments)
         )
 
-        product_name = arguments.get("product_name")
+        product_name = arguments.get(
+            "product_name"
+        )
 
     except (TypeError, ValueError):
         return "Ürün bilgisi işlenirken bir hata oluştu."

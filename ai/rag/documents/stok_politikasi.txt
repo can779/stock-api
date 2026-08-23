@@ -1,0 +1,13 @@
+STOK YÖNETİM POLİTİKASI
+
+Şirketimiz stok yönetiminde ürün kategorilerine göre minimum stok seviyeleri belirler.
+
+Telefon kategorisindeki ürünlerin minimum stok seviyesi 15 adettir.
+
+Bilgisayar kategorisindeki ürünlerin minimum stok seviyesi 5 adettir.
+
+Kırtasiye ürünlerinde minimum stok seviyesi 20 adettir.
+
+Bir ürünün stok seviyesi belirlenen minimum seviyenin altına düştüğünde yeniden sipariş süreci başlatılır.
+
+Yeniden sipariş miktarı ürünün geçmiş satış performansı ve mevcut talep durumuna göre belirlenir.
