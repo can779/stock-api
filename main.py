@@ -38,12 +38,24 @@ import logging
 from ai.ai_service import chat_with_ai
 from ai.llm_service import ask_llm
 
+from services.erp_service import get_erp_product
+
+from repositories.product_repository import get_product_by_name
+
+import os
+from fastapi import FastAPI, Depends, HTTPException, Header
+
+ERP_API_KEY = os.getenv(
+    "ERP_API_KEY"
+)
 
 logging.basicConfig(
     level=logging.INFO
 )
 
 logger = logging.getLogger(__name__)
+
+
 
 app = FastAPI()
 app.add_middleware(
@@ -112,6 +124,57 @@ def get_products_endpoint(
         sort
     )
 
+# =========================================================
+# ERP
+# =========================================================
+
+@app.get("/erp/products/{product_name}")
+def get_erp_product_endpoint(
+    product_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    result = get_erp_product(
+        product_name
+    )
+
+    if isinstance(result, dict) and "error" in result:
+        raise HTTPException(
+            status_code=404,
+            detail=result["error"]
+        )
+
+    return result
+
+@app.get("/mock-erp/products/{product_name}")
+def mock_erp_product(
+    product_name: str,
+    db: Session = Depends(get_db),
+    x_api_key: str | None = Header(default=None)
+):
+    if x_api_key != ERP_API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="ERP API anahtarı geçersiz"
+        )
+
+    product = get_product_by_name(
+        db,
+        product_name
+    )
+
+    if product is None:
+        raise HTTPException(
+            status_code=404,
+            detail="ERP'de ürün bulunamadı"
+        )
+
+    return {
+        "id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "stock": product.stock,
+        "category": product.category
+    }
 
 @app.get(
     "/products/{product_id}",
@@ -276,3 +339,5 @@ def ai_chat(
     return {
         "response": response
     }
+
+

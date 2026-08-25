@@ -11,9 +11,19 @@ from ai.tools import (
     get_low_stock_products,
     get_low_stock_products_tool,
     search_company_policy,
-    search_company_policy_tool
+    search_company_policy_tool,
+    get_erp_product_tool,
+    get_erp_product_tool_function
 )
 
+from services.category_mapping_service import (
+    get_policy_category
+)
+
+
+# ============================================================
+# STOCK POLICY QUESTION DETECTION
+# ============================================================
 
 def is_stock_policy_comparison_question(
     user_message: str
@@ -34,6 +44,10 @@ def is_stock_policy_comparison_question(
         for keyword in comparison_keywords
     )
 
+
+# ============================================================
+# PRODUCT NAME EXTRACTION
+# ============================================================
 
 def extract_product_name(
     user_message: str
@@ -80,6 +94,10 @@ Açıklama yapma.
     return product_name
 
 
+# ============================================================
+# MINIMUM STOCK EXTRACTION
+# ============================================================
+
 def extract_minimum_stock(
     policy_text: str
 ):
@@ -91,14 +109,34 @@ def extract_minimum_stock(
     if not match:
         return None
 
-    return int(match.group(1))
+    return int(
+        match.group(1)
+    )
 
+
+# ============================================================
+# BUSINESS RULE
+# ============================================================
+
+def compare_stock_with_policy(
+    current_stock: int,
+    minimum_stock: int
+):
+    return current_stock < minimum_stock
+
+
+# ============================================================
+# STOCK POLICY CHECK
+# ============================================================
 
 def check_stock_policy(
     db: Session,
     user_message: str
 ):
-    # Kullanıcının mesajından ürün adını çıkar
+    # --------------------------------------------------------
+    # Ürün adını bul
+    # --------------------------------------------------------
+
     product_name = extract_product_name(
         user_message
     )
@@ -108,32 +146,56 @@ def check_stock_policy(
             "error": "Ürün adı belirlenemedi."
         }
 
-    # Ürünün canlı stok bilgisini DB'den al
+    # --------------------------------------------------------
+    # Ürünün mevcut stok bilgisini DB'den al
+    # --------------------------------------------------------
+
     product = get_product_stock(
         db,
         product_name
     )
 
-    # Ürün bulunamadıysa
     if isinstance(product, dict) and "error" in product:
-        return product["error"]
+        return product
 
-    # Mevcut stok
     current_stock = product["stock"]
 
-    # Ürün kategorisi
-    category = product["category"]
+    erp_category = product["category"]
 
-    # Kategoriye göre şirket politikasını RAG'den al
+    # --------------------------------------------------------
+    # ERP kategorisini politika kategorisine çevir
+    # --------------------------------------------------------
+
+    policy_category = get_policy_category(
+        product["name"]
+    )
+
+    if policy_category is None:
+        return {
+            "error": (
+                f"{product['name']} ürünü için "
+                "şirket politikasında kategori "
+                "eşleşmesi bulunamadı."
+            )
+        }
+
+    # --------------------------------------------------------
+    # RAG'e politika sorusu gönder
+    # --------------------------------------------------------
+
     policy_question = (
-        f"{category} kategorisinin minimum stok seviyesi nedir?"
+        f"{policy_category} kategorisinin "
+        f"minimum stok seviyesi nedir?"
     )
 
     policy = search_company_policy(
         policy_question
     )
 
-    # RAG cevabından minimum stok sayısını çıkar
+    # --------------------------------------------------------
+    # RAG sonucundan minimum stok çıkar
+    # --------------------------------------------------------
+
     minimum_stock = extract_minimum_stock(
         policy
     )
@@ -143,71 +205,37 @@ def check_stock_policy(
             "error": "Minimum stok seviyesi belirlenemedi."
         }
 
-    # Gerçek iş kuralı
-    is_below_minimum = (
-        current_stock < minimum_stock
+    # --------------------------------------------------------
+    # BUSINESS RULE
+    # --------------------------------------------------------
+
+    is_below_minimum = compare_stock_with_policy(
+        current_stock,
+        minimum_stock
     )
 
     return {
         "product_name": product["name"],
-        "category": category,
+        "erp_category": erp_category,
+        "policy_category": policy_category,
         "current_stock": current_stock,
         "minimum_stock": minimum_stock,
         "is_below_minimum": is_below_minimum
     }
 
 
+# ============================================================
+# MAIN AI SERVICE
+# ============================================================
+
 def chat_with_ai(
     db: Session,
     user_message: str
 ):
 
-    # =====================================================
-    # STOCK POLICY COMPARISON
-    # =====================================================
-
-    if is_stock_policy_comparison_question(
-        user_message
-    ):
-        result = check_stock_policy(
-            db,
-            user_message
-        )
-
-        if isinstance(result, str):
-            return result
-
-        if "error" in result:
-            return result["error"]
-
-        product_name = result["product_name"]
-        current_stock = result["current_stock"]
-        minimum_stock = result["minimum_stock"]
-        is_below_minimum = result["is_below_minimum"]
-        category = result["category"]
-
-        if is_below_minimum:
-            return (
-                f"{product_name} ürününün mevcut stoğu "
-                f"{current_stock} adettir. "
-                f"{category} kategorisi için minimum stok "
-                f"seviyesi {minimum_stock} adettir. "
-                f"Bu nedenle ürün minimum stok seviyesinin "
-                f"altındadır. Yeniden sipariş süreci "
-                f"başlatılmalıdır."
-            )
-
-        return (
-            f"{product_name} ürününün mevcut stoğu "
-            f"{current_stock} adettir. "
-            f"{category} kategorisi için minimum stok "
-            f"seviyesi {minimum_stock} adettir. "
-            f"Ürün minimum stok seviyesinin altında değildir."
-        )
-
-    # =====================================================
+    # ========================================================
     # NORMAL TOOL CALLING
-    # =====================================================
+    # ========================================================
 
     messages = [
         {
@@ -216,17 +244,24 @@ def chat_with_ai(
         }
     ]
 
-    # LLM'e kullanabileceği bütün tool'ları tanıt
+    # --------------------------------------------------------
+    # LLM'e bütün tool'ları tanıt
+    # --------------------------------------------------------
+
     response = ask_llm_with_tools(
         messages,
         [
             get_product_stock_tool,
             get_low_stock_products_tool,
-            search_company_policy_tool
+            search_company_policy_tool,
+            get_erp_product_tool
         ]
     )
 
-    # Debug
+    # --------------------------------------------------------
+    # DEBUG
+    # --------------------------------------------------------
+
     print("\nTOOL ÇAĞRILARI:")
 
     for tool_call in response.message.tool_calls:
@@ -241,27 +276,34 @@ def chat_with_ai(
             tool_call.function.arguments
         )
 
-    # LLM herhangi bir tool çağırmadıysa
+    # --------------------------------------------------------
+    # Tool çağrılmadıysa direkt cevap
+    # --------------------------------------------------------
+
     if not response.message.tool_calls:
         return response.message.content
 
-    # LLM'in tool çağrısını konuşma geçmişine ekle
+    # --------------------------------------------------------
+    # LLM mesajını geçmişe ekle
+    # --------------------------------------------------------
+
     messages.append(
         response.message
     )
 
-    # =====================================================
+    # ========================================================
     # MULTI TOOL CALLING
-    # =====================================================
+    # ========================================================
 
     for tool_call in response.message.tool_calls:
 
         tool_name = tool_call.function.name
+
         arguments = tool_call.function.arguments
 
-        # -------------------------------------------------
-        # PRODUCT STOCK TOOL
-        # -------------------------------------------------
+        # ====================================================
+        # PRODUCT STOCK
+        # ====================================================
 
         if tool_name == "get_product_stock":
 
@@ -275,6 +317,7 @@ def chat_with_ai(
                 )
 
             except (TypeError, ValueError):
+
                 return (
                     "Ürün bilgisi işlenirken "
                     "bir hata oluştu."
@@ -288,9 +331,9 @@ def chat_with_ai(
                 product_name
             )
 
-        # -------------------------------------------------
-        # LOW STOCK TOOL
-        # -------------------------------------------------
+        # ====================================================
+        # LOW STOCK PRODUCTS
+        # ====================================================
 
         elif tool_name == "get_low_stock_products":
 
@@ -298,9 +341,9 @@ def chat_with_ai(
                 db
             )
 
-        # -------------------------------------------------
+        # ====================================================
         # COMPANY POLICY / RAG
-        # -------------------------------------------------
+        # ====================================================
 
         elif tool_name == "search_company_policy":
 
@@ -314,6 +357,7 @@ def chat_with_ai(
                 )
 
             except (TypeError, ValueError):
+
                 return (
                     "Politika sorusu işlenirken "
                     "bir hata oluştu."
@@ -326,17 +370,50 @@ def chat_with_ai(
                 question
             )
 
-        # -------------------------------------------------
+        # ====================================================
+        # ERP PRODUCT
+        # ====================================================
+
+        elif tool_name == "get_erp_product":
+
+            try:
+                arguments = json.loads(
+                    json.dumps(arguments)
+                )
+
+                product_name = arguments.get(
+                    "product_name"
+                )
+
+            except (TypeError, ValueError):
+
+                return (
+                    "ERP ürün bilgisi işlenirken "
+                    "bir hata oluştu."
+                )
+
+            if not product_name:
+                return "ERP ürün adı belirtilmedi."
+
+            result = get_erp_product_tool_function(
+                product_name
+            )
+
+        # ====================================================
         # UNKNOWN TOOL
-        # -------------------------------------------------
+        # ====================================================
 
         else:
+
             return (
                 "Bu işlem için uygun "
                 "bir araç bulunamadı."
             )
 
-        # Tool sonucunu LLM'e ekle
+        # ----------------------------------------------------
+        # Tool sonucunu konuşma geçmişine ekle
+        # ----------------------------------------------------
+
         messages.append({
             "role": "tool",
             "tool_name": tool_name,
@@ -346,16 +423,17 @@ def chat_with_ai(
             )
         })
 
-    # =====================================================
+    # ========================================================
     # FINAL LLM RESPONSE
-    # =====================================================
+    # ========================================================
 
     final_response = ask_llm_with_tools(
         messages,
         [
             get_product_stock_tool,
             get_low_stock_products_tool,
-            search_company_policy_tool
+            search_company_policy_tool,
+            get_erp_product_tool
         ]
     )
 
