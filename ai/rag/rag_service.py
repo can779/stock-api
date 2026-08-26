@@ -5,13 +5,60 @@ from ai.llm_service import ask_llm
 def answer_with_rag(
     question: str
 ):
-    results = search_documents(
-        question,
-        n_results=2
+
+    try:
+
+        results = search_documents(
+            question,
+            n_results=2
+        )
+
+    except Exception as e:
+
+        print(
+            "RAG search hatası:",
+            e
+        )
+
+        return (
+            "Bilgi arama sistemi şu anda "
+            "kullanılamıyor."
+        )
+
+    # -----------------------------------------------------
+    # SEARCH SONUCU KONTROLÜ
+    # -----------------------------------------------------
+
+    if not results:
+        return (
+            "Bu bilgi dokümanda bulunmamaktadır."
+        )
+
+    documents = results.get(
+        "documents",
+        [[]]
     )
 
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
+    metadatas = results.get(
+        "metadatas",
+        [[]]
+    )
+
+    if not documents or not documents[0]:
+        return (
+            "Bu bilgi dokümanda bulunmamaktadır."
+        )
+
+    documents = documents[0]
+
+    if metadatas and metadatas[0]:
+        metadatas = metadatas[0]
+    else:
+        metadatas = [{} for _ in documents]
+
+    # -----------------------------------------------------
+    # CONTEXT OLUŞTUR
+    # -----------------------------------------------------
 
     context_parts = []
 
@@ -19,10 +66,11 @@ def answer_with_rag(
         documents,
         metadatas
     ):
+
         context_parts.append(
             f"""
-KAYNAK: {metadata["source"]}
-CHUNK: {metadata["chunk_id"]}
+KAYNAK: {metadata.get("source", "Bilinmiyor")}
+CHUNK: {metadata.get("chunk_id", "Bilinmiyor")}
 
 İÇERİK:
 {document}
@@ -33,23 +81,51 @@ CHUNK: {metadata["chunk_id"]}
         context_parts
     )
 
+    # -----------------------------------------------------
+    # LLM PROMPT
+    # -----------------------------------------------------
+
     prompt = f"""
 Aşağıdaki dokümanları kullanarak soruyu cevapla.
 
 DOKÜMANLAR:
+
 {context}
 
 SORU:
+
 {question}
 
-Eğer cevap dokümanlarda varsa sadece dokümanlardaki
-bilgileri kullan.
+Kurallar:
 
-Eğer cevap dokümanlarda yoksa:
+1. Cevap dokümanlarda varsa sadece
+   dokümanlardaki bilgileri kullan.
+
+2. Cevap dokümanlarda yoksa:
+
 "Bu bilgi dokümanda bulunmamaktadır."
+
 de.
 
-Cevabı Türkçe ver.
+3. Bilgi uydurma.
+
+4. Cevabı Türkçe ver.
 """
 
-    return ask_llm(prompt)
+    try:
+
+        return ask_llm(
+            prompt
+        )
+
+    except Exception as e:
+
+        print(
+            "RAG LLM hatası:",
+            e
+        )
+
+        return (
+            "Dokümanlardan cevap oluşturulurken "
+            "bir hata oluştu."
+        )

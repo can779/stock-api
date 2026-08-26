@@ -36,21 +36,66 @@ def get_erp_product(
             timeout=5
         )
 
+        # -------------------------------------------------
+        # AUTHENTICATION HATASI
+        # -------------------------------------------------
+
         if response.status_code == 401:
             return {
                 "error": "ERP API yetkilendirme hatası"
             }
+
+        # -------------------------------------------------
+        # ÜRÜN BULUNAMADI
+        # -------------------------------------------------
 
         if response.status_code == 404:
             return {
                 "error": "ERP'de ürün bulunamadı"
             }
 
+        # -------------------------------------------------
+        # DİĞER HTTP HATALARI
+        # -------------------------------------------------
+
+        if response.status_code >= 500:
+            return {
+                "error": "ERP sunucusunda hata oluştu"
+            }
+
         response.raise_for_status()
 
-        return response.json()
+        # -------------------------------------------------
+        # JSON KONTROLÜ
+        # -------------------------------------------------
 
-    except httpx.RequestError as e:
+        try:
+            return response.json()
+
+        except ValueError:
+            return {
+                "error": "ERP geçersiz veri döndürdü"
+            }
+
+    # -----------------------------------------------------
+    # TIMEOUT
+    # -----------------------------------------------------
+
+    except httpx.TimeoutException:
+
+        print(
+            "ERP bağlantısı zaman aşımına uğradı."
+        )
+
+        return {
+            "error": "ERP servisine erişim zaman aşımına uğradı"
+        }
+
+    # -----------------------------------------------------
+    # BAĞLANTI HATASI
+    # -----------------------------------------------------
+
+    except httpx.ConnectError as e:
 
         print(
             "ERP bağlantı hatası:",
@@ -58,5 +103,35 @@ def get_erp_product(
         )
 
         return {
-            "error": "ERP servisine ulaşılamadı"
+            "error": "ERP servisine bağlanılamadı"
+        }
+
+    # -----------------------------------------------------
+    # DİĞER HTTPX HATALARI
+    # -----------------------------------------------------
+
+    except httpx.RequestError as e:
+
+        print(
+            "ERP HTTP hatası:",
+            e
+        )
+
+        return {
+            "error": "ERP servisiyle iletişim kurulamadı"
+        }
+
+    # -----------------------------------------------------
+    # BEKLENMEYEN HATA
+    # -----------------------------------------------------
+
+    except Exception as e:
+
+        print(
+            "Beklenmeyen ERP hatası:",
+            e
+        )
+
+        return {
+            "error": "ERP işlemi sırasında beklenmeyen bir hata oluştu"
         }
